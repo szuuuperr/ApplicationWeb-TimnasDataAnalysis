@@ -1,7 +1,6 @@
 import streamlit as st
 
-from pages.tab_data import (muat_dataset, validasi_dataset, siapkan_dataset,
-                            tampilkan_tab_data)
+from pages.tab_data import (muat_dataset, validasi_dataset, siapkan_dataset, tampilkan_tab_data)
 from pages.tab_sentimen import tampilkan_tab_sentimen
 from pages.tab_clustering import tampilkan_tab_clustering
 from pages.tab_regresi import tampilkan_tab_regresi
