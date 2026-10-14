@@ -165,7 +165,7 @@ def tampilkan_tab_sentimen(df):
         color=alt.Color("Kategori:N", legend=None),
         tooltip=["Kategori", "Jumlah", alt.Tooltip("Persentase:Q", format=".2f")]
     ).properties(height=320)
-    st.altair_chart(chart, use_container_width=True)
+    st.altair_chart(chart, width='stretch')
 
     # 3. Tabel Hasil Klasifikasi
     st.subheader("Tabel Hasil Klasifikasi")
@@ -175,7 +175,7 @@ def tampilkan_tab_sentimen(df):
 
     st.dataframe(
         tampil_df[[kolom_teks, "sentimen_label", "confidence_pct"]],
-        use_container_width=True,
+        width='stretch',
         hide_index=True
     )
 

@@ -77,7 +77,7 @@ def tampilkan_tab_data(df):
                 "Baris tersebut hanya dikeluarkan dari analisis regresi.")
 
     st.subheader("Pratinjau dataset")
-    st.dataframe(df.head(50), use_container_width=True)
+    st.dataframe(df.head(50), width='stretch')
 
     st.subheader("Informasi pengambilan data")
     meta = baca_metadata()
@@ -104,4 +104,4 @@ def tampilkan_tab_data(df):
 
     if os.path.exists(LOG_PATH):
         st.subheader("Ringkasan pembersihan data")
-        st.dataframe(pd.read_csv(LOG_PATH), use_container_width=True)
+        st.dataframe(pd.read_csv(LOG_PATH), width='stretch')

@@ -69,7 +69,7 @@ def tampilkan_tab_regresi(data):
 
     col1, col2 = st.columns([1, 1], vertical_alignment="bottom")
     likes = col1.number_input("Jumlah like", min_value=0, value=100, step=1)
-    tombol = col2.button("Prediksi", use_container_width=True)
+    tombol = col2.button("Prediksi", width='stretch')
 
     if tombol:
         input_data = pd.DataFrame({fitur_col: [likes]})
@@ -121,7 +121,7 @@ def tampilkan_tab_regresi(data):
             st.pyplot(fig)
         with col_corr2:
             st.write("Nilai korelasi:")
-            st.dataframe(corr.style.format("{:.3f}"), use_container_width=True)
+            st.dataframe(corr.style.format("{:.3f}"), width='stretch')
 
         st.markdown("**3. Grafik Regresi (Like vs Repost)**")
         fig, ax = plt.subplots(figsize=(6, 3.5))
