@@ -151,9 +151,16 @@ def tampilkan_tab_clustering(data):
                 sent_col = 'sentimen'
 
         pivot = df_sent.groupby(['cluster', sent_col]).size().unstack(fill_value=0)
+
+        warna_map = {
+            'negative': '#e74c3c',
+            'neutral':  '#95a5a6',
+            'positive': '#2ecc71',
+        }
+        warna_urut = [warna_map.get(col, '#cccccc') for col in pivot.columns]
+
         fig, ax = plt.subplots(figsize=(6, 3.5))
-        pivot.plot(kind='bar', stacked=True, ax=ax,
-                   color=['#2ecc71', '#95a5a6', '#e74c3c'])
+        pivot.plot(kind='bar', stacked=True, ax=ax, color=warna_urut)
         ax.set_title(f'Distribusi Sentimen per Cluster', fontsize=10)
         ax.set_xlabel('Cluster', fontsize=9)
         ax.set_ylabel('Jumlah Postingan', fontsize=9)
