@@ -7,33 +7,7 @@ from sklearn.decomposition import PCA
 import matplotlib.pyplot as plt
 from collections import Counter
 from wordcloud import WordCloud
-from transformers import pipeline
 
-@st.cache_resource
-def load_model_sentimen():
-    return pipeline(
-        "sentiment-analysis",
-        model="w11wo/indonesian-roberta-base-sentiment-classifier",
-        device=-1
-    )
-
-@st.cache_data(show_spinner=False)
-def klasifikasi_sentimen(teks_list):
-    model = load_model_sentimen()
-    hasil = []
-    for i in range(0, len(teks_list), 16):
-        batch = list(teks_list[i:i + 16])
-        prediksi_batch = model(batch, padding=True, truncation=True, max_length=128)
-        for prediksi in prediksi_batch:
-            if isinstance(prediksi, dict):
-                label_teratas = prediksi
-            else:
-                label_teratas = max(prediksi, key=lambda item: item["score"])
-            hasil.append({
-                "sentimen": label_teratas["label"].lower(),
-                "confidence": float(label_teratas["score"])
-            })
-    return pd.DataFrame(hasil)
 
 def tampilkan_tab_clustering(data):
     st.header("Clustering TF-IDF + K-Means")
@@ -91,9 +65,9 @@ def tampilkan_tab_clustering(data):
     df['cluster'] = kmeans.fit_predict(X)
 
     nama_tema = {
-        0: "Tema Cluster 0 (Kritik terhadap PSSI dan Kebijakan Pemain)",
-        1: "Tema Cluster 1 (Diskusi Umum Seputar Timnas Indonesia)",
-        2: "Tema Cluster 2 (#TimnasDay dan #PertiwiBerani)",
+        0: "Kritik terhadap PSSI dan Kebijakan Pemain",
+        1: "Diskusi Umum Seputar Timnas Indonesia",
+        2: "#TimnasDay dan #PertiwiBerani",
     }
 
     order_centroids = kmeans.cluster_centers_.argsort()[:, ::-1]
@@ -133,43 +107,6 @@ def tampilkan_tab_clustering(data):
         plt.tight_layout()
         st.pyplot(fig)
 
-    with st.expander("Distribusi Sentimen per Cluster", expanded=False):
-        sent_col = None
-        for c in ['sentimen', 'sentiment', 'label_sentimen', 'sentimen_pred']:
-            if c in df.columns:
-                sent_col = c
-                break
-
-        if sent_col:
-            df_sent = df.copy()
-        else:
-            with st.spinner("Menghitung sentimen..."):
-                teks_list = tuple(df[text_col].astype(str).tolist())
-                hasil_sent = klasifikasi_sentimen(teks_list)
-                df_sent = df.copy()
-                df_sent['sentimen'] = hasil_sent['sentimen'].values
-                sent_col = 'sentimen'
-
-        pivot = df_sent.groupby(['cluster', sent_col]).size().unstack(fill_value=0)
-
-        warna_map = {
-            'negative': '#e74c3c',
-            'neutral':  '#95a5a6',
-            'positive': '#2ecc71',
-        }
-        warna_urut = [warna_map.get(col, '#cccccc') for col in pivot.columns]
-
-        fig, ax = plt.subplots(figsize=(6, 3.5))
-        pivot.plot(kind='bar', stacked=True, ax=ax, color=warna_urut)
-        ax.set_title(f'Distribusi Sentimen per Cluster', fontsize=10)
-        ax.set_xlabel('Cluster', fontsize=9)
-        ax.set_ylabel('Jumlah Postingan', fontsize=9)
-        ax.tick_params(labelsize=8)
-        plt.xticks(rotation=0)
-        plt.legend(title='Sentimen', fontsize=8)
-        plt.tight_layout()
-        st.pyplot(fig)
-
     with st.expander("Word Cloud per Cluster", expanded=False):
         fig, axes = plt.subplots(1, k, figsize=(12, 3.5))
         for i in range(k):
@@ -197,7 +134,7 @@ def tampilkan_tab_clustering(data):
         plt.tight_layout()
         st.pyplot(fig)
 
-        st.divider()
+    st.divider()
 
     st.subheader("Penjelasan Perbedaan dan Tumpang Tindih")
 
