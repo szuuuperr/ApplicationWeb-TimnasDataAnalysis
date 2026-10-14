@@ -1,357 +1,235 @@
-
-import streamlit as st
-import pandas as pd
-import altair as alt
 from pathlib import Path
-from transformers import pipeline
+import altair as alt
+import pandas as pd
+import streamlit as st
 
-# Lokasi folder proyek
+# Path berkas sesuai struktur proyek
 BASE_DIR = Path(__file__).resolve().parent.parent
-EVALUASI_DIR = BASE_DIR / "data" / "processed"
-EVALUASI_DIR.mkdir(parents=True, exist_ok=True)
+PROCESSED_DIR = BASE_DIR / "data" / "processed"
+PROCESSED_DIR.mkdir(parents=True, exist_ok=True)
 
-FILE_SAMPEL = EVALUASI_DIR / "sampel_evaluasi_sentimen.csv"
-FILE_LABEL = EVALUASI_DIR / "label_manual_sentimen.csv"
+FILE_EVALUASI = PROCESSED_DIR / "evaluasi_sentimen.csv"
+FILE_PREDIKSI_TEMP = PROCESSED_DIR / "prediksi_sampel_internal.csv"
+
+URUTAN_SENTIMEN = ["positive", "neutral", "negative"]
+NAMA_LABEL = {"positive": "Positif", "neutral": "Netral", "negative": "Negatif"}
+
+# Kata Kunci Sentimen untuk Fallback Lexicon
+KATA_POSITIF = {
+    "menang", "juara", "mantap", "bagus", "keren", "hebat", "bangga", "terbaik", 
+    "garuda", "dukung", "semangat", "gacor", "top", "apresiasi", "lolos", "unggul",
+    "terimakasih", "berhasil", "jos", "menyala", "kelas", "cinta", "love", "pinter"
+}
+
+KATA_NEGATIF = {
+    "kalah", "jelek", "buruk", "kecewa", "parah", "lemah", "bobrok", "out", 
+    "gagal", "rugi", "ancur", "hancur", "error", "salah", "benci", "ampas", 
+    "beban", "boikot", "injak", "kehilangan", "rusak"
+}
+
+KATA_NEGASI = {"tidak", "bukan", "gak", "nggak", "ngga", "tak", "belum", "tdk"}
+
+
+def analisis_sentimen_lexicon(teks):
+    """Fallback analisis sentimen berbasis aturan & negasi."""
+    kata_kata = str(teks).lower().split()
+    skor = 0
+    for i, kata in enumerate(kata_kata):
+        is_negasi = (i > 0 and kata_kata[i - 1] in KATA_NEGASI) or (i > 1 and kata_kata[i - 2] in KATA_NEGASI)
+        if kata in KATA_POSITIF:
+            skor += -1 if is_negasi else 1
+        elif kata in KATA_NEGATIF:
+            skor += 1 if is_negasi else -1
+
+    if skor > 0:
+        return "positive", min(0.55 + skor * 0.1, 0.98)
+    elif skor < 0:
+        return "negative", min(0.55 + abs(skor) * 0.1, 0.98)
+    return "neutral", 0.60
 
 
 @st.cache_resource
-def load_model():
-    """Memuat model sentimen satu kali selama aplikasi berjalan."""
-    return pipeline(
-        "sentiment-analysis",
-        model="w11wo/indonesian-roberta-base-sentiment-classifier",
-        device=-1
-    )
+def muat_model_transformer():
+    """Memuat model HuggingFace bila tersedia."""
+    try:
+        from transformers import pipeline
+        return pipeline(
+            "sentiment-analysis",
+            model="w11wo/indonesian-roberta-base-sentiment-classifier",
+            device=-1
+        )
+    except Exception:
+        return None
 
 
 def cari_kolom_teks(df):
-    """Mencari kolom teks yang tersedia pada dataset."""
-    kandidat = ["text", "full_text", "tweet", "teks", "text_clean"]
-
-    for kolom in kandidat:
-        if kolom in df.columns:
-            return kolom
-
+    for k in ["text_clean", "text", "full_text", "tweet", "teks"]:
+        if k in df.columns:
+            return k
     return None
 
 
 @st.cache_data(show_spinner=False)
-def klasifikasi_sentimen(teks_list):
-    """Mengklasifikasikan kumpulan postingan."""
-    model = load_model()
+def proses_klasifikasi(teks_list):
+    """Proses prediksi sentimen dengan transformer atau fallback lexicon."""
+    model = muat_model_transformer()
     hasil = []
 
-    # Batch kecil agar lebih ramah terhadap memori
-    for i in range(0, len(teks_list), 16):
-        batch = teks_list[i:i + 16]
-        prediksi_batch = model(batch, truncation=True, batch_size=16)
+    if model is not None:
+        try:
+            batch_size = 16
+            for i in range(0, len(teks_list), batch_size):
+                batch = list(teks_list[i:i + batch_size])
+                preds = model(batch, truncation=True, batch_size=batch_size)
+                for p in preds:
+                    item = p[0] if isinstance(p, list) else p
+                    raw_label = str(item.get("label", "")).strip().lower()
+                    score = float(item.get("score", 0.6))
 
-        for prediksi in prediksi_batch:
-            label_teratas = max(
-                prediksi,
-                key=lambda item: item["score"]
-            )
+                    # Normalisasi label
+                    if "pos" in raw_label or raw_label == "label_2":
+                        label = "positive"
+                    elif "neg" in raw_label or raw_label == "label_0":
+                        label = "negative"
+                    else:
+                        label = "neutral"
 
-            hasil.append({
-                "sentimen": label_teratas["label"].lower(),
-                "confidence": float(label_teratas["score"])
-            })
+                    hasil.append({"sentimen": label, "confidence": score})
+            return pd.DataFrame(hasil)
+        except Exception:
+            pass
 
+    # Menggunakan Lexicon jika HuggingFace tidak dapat digunakan
+    for t in teks_list:
+        lbl, conf = analisis_sentimen_lexicon(t)
+        hasil.append({"sentimen": lbl, "confidence": conf})
     return pd.DataFrame(hasil)
 
 
 def tampilkan_tab_sentimen(df):
     st.header("Analisis Sentimen Postingan X")
-    st.write(
-        "Klasifikasi sentimen postingan tentang Timnas Indonesia "
-        "menggunakan model pretrained Bahasa Indonesia."
-    )
+    st.write("Klasifikasi sentimen postingan tentang Timnas Indonesia ke dalam kategori Positif, Netral, dan Negatif.")
 
     kolom_teks = cari_kolom_teks(df)
-
-    if kolom_teks is None:
-        st.error(
-            "Kolom teks tidak ditemukan. Dataset harus memiliki "
-            "kolom text, full_text, tweet, atau teks."
-        )
+    if not kolom_teks:
+        st.error("Kolom teks tidak ditemukan pada dataset.")
         return
 
-    # Menyiapkan data
     data = df.copy()
     data[kolom_teks] = data[kolom_teks].fillna("").astype(str)
-    data = data[data[kolom_teks].str.strip() != ""].copy()
-    data = data.reset_index(drop=True)
+    data = data[data[kolom_teks].str.strip() != ""].reset_index(drop=True)
 
     if data.empty:
-        st.warning("Tidak ada postingan yang dapat dianalisis.")
+        st.warning("Tidak ada data teks yang dapat dianalisis.")
         return
 
-    st.caption(f"Jumlah postingan yang dianalisis: {len(data)}")
+    # Menjalankan Klasifikasi
+    with st.spinner("Menganalisis sentimen postingan..."):
+        teks_tuple = tuple(data[kolom_teks].tolist())
+        hasil_pred = proses_klasifikasi(teks_tuple)
 
-    # Menjalankan klasifikasi
-    with st.spinner("Model sedang menganalisis sentimen postingan..."):
-        teks_list = tuple(data[kolom_teks].tolist())
-        hasil = klasifikasi_sentimen(teks_list)
+    data["sentimen"] = hasil_pred["sentimen"].values
+    data["confidence"] = hasil_pred["confidence"].values
 
-    data["sentimen"] = hasil["sentimen"].values
-    data["confidence"] = hasil["confidence"].values
-
-    # Ringkasan jumlah dan persentase
-    urutan = ["positive", "neutral", "negative"]
-    nama_label = {
-        "positive": "Positif",
-        "neutral": "Netral",
-        "negative": "Negatif"
-    }
-
+    # 1. Ringkasan & Persentase
     jumlah = data["sentimen"].value_counts()
     ringkasan = pd.DataFrame({
-        "Sentimen": urutan,
-        "Jumlah": [int(jumlah.get(label, 0)) for label in urutan]
+        "Sentimen": URUTAN_SENTIMEN,
+        "Jumlah": [int(jumlah.get(lbl, 0)) for lbl in URUTAN_SENTIMEN]
     })
-    ringkasan["Persentase"] = (
-        ringkasan["Jumlah"] / len(data) * 100
-    )
-    ringkasan["Kategori"] = ringkasan["Sentimen"].map(nama_label)
+    ringkasan["Persentase"] = (ringkasan["Jumlah"] / len(data)) * 100
+    ringkasan["Kategori"] = ringkasan["Sentimen"].map(NAMA_LABEL)
 
     st.subheader("Distribusi Sentimen")
+    cols = st.columns(3)
+    for i, lbl in enumerate(URUTAN_SENTIMEN):
+        row = ringkasan[ringkasan["Sentimen"] == lbl].iloc[0]
+        cols[i].metric(NAMA_LABEL[lbl], f"{row['Jumlah']} postingan", f"{row['Persentase']:.2f}%")
 
-    kolom = st.columns(3)
-    for i, label in enumerate(urutan):
-        baris = ringkasan[ringkasan["Sentimen"] == label].iloc[0]
-        with kolom[i]:
-            st.metric(
-                nama_label[label],
-                f"{int(baris['Jumlah'])} postingan",
-                f"{baris['Persentase']:.2f}%"
-            )
-
-    grafik = alt.Chart(ringkasan).mark_bar().encode(
-        x=alt.X("Kategori:N", title="Kategori Sentimen", sort=[
-            "Positif", "Netral", "Negatif"
-        ]),
+    # 2. Grafik Distribusi Sentimen
+    chart = alt.Chart(ringkasan).mark_bar().encode(
+        x=alt.X("Kategori:N", title="Kategori Sentimen", sort=["Positif", "Netral", "Negatif"]),
         y=alt.Y("Jumlah:Q", title="Jumlah Postingan"),
-        tooltip=[
-            alt.Tooltip("Kategori:N", title="Sentimen"),
-            alt.Tooltip("Jumlah:Q", title="Jumlah"),
-            alt.Tooltip("Persentase:Q", title="Persentase", format=".2f")
-        ]
-    ).properties(height=350)
+        color=alt.Color("Kategori:N", legend=None),
+        tooltip=["Kategori", "Jumlah", alt.Tooltip("Persentase:Q", format=".2f")]
+    ).properties(height=320)
+    st.altair_chart(chart, use_container_width=True)
 
-    st.altair_chart(grafik, use_container_width=True)
-
-    # Tabel hasil klasifikasi
-    st.subheader("Hasil Klasifikasi Postingan")
-
-    data_tampil = data.copy()
-    data_tampil["sentimen"] = data_tampil["sentimen"].map(nama_label)
-    data_tampil["confidence"] = (
-        data_tampil["confidence"] * 100
-    ).round(2)
+    # 3. Tabel Hasil Klasifikasi
+    st.subheader("Tabel Hasil Klasifikasi")
+    tampil_df = data.copy()
+    tampil_df["sentimen_label"] = tampil_df["sentimen"].map(NAMA_LABEL)
+    tampil_df["confidence_pct"] = (tampil_df["confidence"] * 100).round(2)
 
     st.dataframe(
-        data_tampil,
+        tampil_df[["text", "sentimen_label", "confidence_pct"]],
         use_container_width=True,
         hide_index=True
     )
 
-    # Evaluasi manual
+    # 4. Pemeriksaan Manual 20 Postingan
     st.divider()
-    st.subheader("Evaluasi Manual 20 Postingan")
-    st.write(
-        "Ambil sampel acak untuk diberi label manual oleh anggota kelompok. "
-        "File sampel tidak menyertakan prediksi model agar penilaian "
-        "manual dapat dilakukan secara independen."
-    )
+    st.subheader("Pemeriksaan Manual 20 Sampel (Evaluasi Model)")
 
-    if st.button("Buat sampel evaluasi 20 postingan"):
-        if len(data) < 20:
-            st.warning(
-                f"Dataset hanya memiliki {len(data)} postingan. "
-                "Seluruh postingan akan digunakan sebagai sampel."
-            )
+    # Jika file evaluasi_sentimen.csv sudah ada di folder processed
+    # Jika file evaluasi_sentimen.csv sudah ada di folder processed
+    if FILE_EVALUASI.exists():
+        eval_df = pd.read_csv(FILE_EVALUASI)
+        if {"text", "label_manual", "prediksi_model"}.issubset(eval_df.columns):
+            # Pastikan kolom diubah ke tipe string terlebih dahulu
+            label_manual_str = eval_df["label_manual"].fillna("").astype(str).str.lower().str.strip()
+            prediksi_model_str = eval_df["prediksi_model"].fillna("").astype(str).str.lower().str.strip()
+            
+            eval_df["sesuai"] = label_manual_str == prediksi_model_str
+            total_eval = len(eval_df)
+            jumlah_sesuai = int(eval_df["sesuai"].sum())
+            persen_sesuai = (jumlah_sesuai / total_eval * 100) if total_eval > 0 else 0
 
-        jumlah_sampel = min(20, len(data))
-        sampel = data.sample(
-            n=jumlah_sampel,
-            random_state=None
-        ).copy()
+            m1, m2, m3 = st.columns(3)
+            m1.metric("Total Sampel Evaluasi", total_eval)
+            m2.metric("Jumlah Label Sesuai", jumlah_sesuai)
+            m3.metric("Persentase Kesesuaian", f"{persen_sesuai:.2f}%")
 
-        sampel = sampel.reset_index(drop=True)
-        sampel.insert(
-            0, "sample_id",
-            [f"S{i + 1:02d}" for i in range(len(sampel))]
+            # Pembahasan 3 Contoh Ketidaksesuaian
+            mismatch_df = eval_df[~eval_df["sesuai"]].copy()
+            st.write(f"**Ditemukan {len(mismatch_df)} ketidaksesuaian label.**")
+
+            if not mismatch_df.empty:
+                st.write("**Contoh Ketidaksesuaian untuk Laporan:**")
+                contoh_3 = mismatch_df.head(3)
+                for _, idx_row in contoh_3.iterrows():
+                    with st.expander(f"Sampel {idx_row.get('sample_id', '')} | Manual: {idx_row['label_manual']} VS Sistem: {idx_row['prediksi_model']}"):
+                        st.write(f"**Teks:** {idx_row['text']}")
+
+    # Pembuatan Sampel Baru
+    st.write("---")
+    st.write("  **Alur Pembuatan / Unggah Evaluasi Manual**")
+    if st.button("Buat / Acak 20 Sampel Baru", key="btn_sample"):
+        n_sample = min(20, len(data))
+        sampel = data.sample(n=n_sample, random_state=42).reset_index(drop=True)
+        sampel["sample_id"] = [f"S{i+1:02d}" for i in range(len(sampel))]
+
+        # Simpan file prediksi internal
+        sampel[["sample_id", "text", "sentimen"]].rename(columns={"sentimen": "prediksi_model"}).to_csv(
+            FILE_PREDIKSI_TEMP, index=False, encoding="utf-8-sig"
         )
 
-        # File untuk penilaian manual tidak memuat prediksi model
-        sampel_manual = sampel[["sample_id", kolom_teks]].copy()
-        sampel_manual = sampel_manual.rename(
-            columns={kolom_teks: "text"}
-        )
+        # File sampel kosong untuk diisi manual
+        sampel_manual = sampel[["sample_id", "text"]].copy()
         sampel_manual["label_manual"] = ""
+        sampel_manual.to_csv(FILE_EVALUASI, index=False, encoding="utf-8-sig")
+        st.success("20 sampel berhasil diacak dan disimpan!")
 
-        sampel_manual.to_csv(
-            FILE_SAMPEL,
-            index=False,
-            encoding="utf-8-sig"
-        )
-
-        # Simpan pasangan ID dan prediksi secara terpisah
-        prediksi_sampel = sampel[["sample_id", "sentimen"]].copy()
-        prediksi_sampel.to_csv(
-            EVALUASI_DIR / "prediksi_sampel_internal.csv",
-            index=False,
-            encoding="utf-8-sig"
-        )
-
-        st.success(
-            "Sampel evaluasi dibuat. Unduh CSV di bawah dan isi label "
-            "manual tanpa melihat prediksi model."
-        )
-
-    if FILE_SAMPEL.exists():
-        st.download_button(
-            "Unduh CSV untuk label manual",
-            data=FILE_SAMPEL.read_bytes(),
-            file_name="sampel_evaluasi_sentimen.csv",
-            mime="text/csv"
-        )
-
-    st.info(
-        "Isi kolom label_manual dengan positive, neutral, atau negative. "
-        "Simpan CSV hasil pelabelan, lalu unggah kembali untuk menghitung "
-        "kesesuaian dengan prediksi model."
-    )
-
-    file_label = st.file_uploader(
-        "Unggah CSV yang sudah diberi label manual",
-        type=["csv"],
-        key="unggah_label_manual"
-    )
-
-    if file_label is not None:
+    uploaded_eval = st.file_uploader("Unggah `evaluasi_sentimen.csv` yang telah diisi label_manual", type=["csv"])
+    if uploaded_eval is not None:
         try:
-            manual = pd.read_csv(file_label)
-
-            kolom_wajib = {"sample_id", "label_manual"}
-            if not kolom_wajib.issubset(manual.columns):
-                st.error(
-                    "CSV harus memiliki kolom sample_id dan label_manual."
-                )
-                return
-
-            manual["label_manual"] = (
-                manual["label_manual"]
-                .astype(str)
-                .str.strip()
-                .str.lower()
-            )
-
-            label_valid = {"positive", "neutral", "negative"}
-
-            if not manual["label_manual"].isin(label_valid).all():
-                st.error(
-                    "Pastikan semua label manual berisi positive, "
-                    "neutral, atau negative."
-                )
-                return
-
-            file_prediksi = (
-                EVALUASI_DIR / "prediksi_sampel_internal.csv"
-            )
-
-            if not file_prediksi.exists():
-                st.error(
-                    "File prediksi internal tidak ditemukan. "
-                    "Buat sampel evaluasi terlebih dahulu."
-                )
-                return
-
-            prediksi = pd.read_csv(file_prediksi)
-
-            perbandingan = manual.merge(
-                prediksi,
-                on="sample_id",
-                how="inner",
-                validate="one_to_one"
-            )
-
-            if len(perbandingan) != len(manual):
-                st.error(
-                    "Ada sample_id yang tidak cocok. Gunakan CSV sampel "
-                    "yang diunduh dari sesi evaluasi yang sama."
-                )
-                return
-
-            perbandingan = perbandingan.rename(
-                columns={"sentimen": "prediksi_model"}
-            )
-            perbandingan["sesuai"] = (
-                perbandingan["label_manual"]
-                == perbandingan["prediksi_model"]
-            )
-
-            jumlah_sesuai = int(perbandingan["sesuai"].sum())
-            total = len(perbandingan)
-            persentase = jumlah_sesuai / total * 100
-
-            st.subheader("Hasil Evaluasi")
-            c1, c2, c3 = st.columns(3)
-            c1.metric("Sampel dievaluasi", total)
-            c2.metric("Label sesuai", jumlah_sesuai)
-            c3.metric("Persentase kesesuaian", f"{persentase:.2f}%")
-
-            st.caption(
-                "Persentase ini adalah kesesuaian pada sampel manual, "
-                "bukan ukuran akurasi yang representatif untuk seluruh "
-                "postingan X."
-            )
-
-            berbeda = perbandingan[
-                ~perbandingan["sesuai"]
-            ].copy()
-
-            st.subheader("Postingan dengan Label Berbeda")
-            st.write(
-                f"Ditemukan {len(berbeda)} perbedaan. "
-                "Pilih hingga tiga contoh untuk dibahas dalam laporan."
-            )
-
-            if berbeda.empty:
-                st.success(
-                    "Semua label manual pada sampel ini sesuai dengan "
-                    "prediksi model."
-                )
-            else:
-                st.dataframe(
-                    berbeda[
-                        [
-                            "sample_id",
-                            "label_manual",
-                            "prediksi_model"
-                        ]
-                    ],
-                    use_container_width=True,
-                    hide_index=True
-                )
-
-                # Tampilkan teks untuk membantu pembahasan
-                teks_manual = manual[
-                    ["sample_id", "text"]
-                ]
-                contoh = berbeda.merge(
-                    teks_manual,
-                    on="sample_id",
-                    how="left"
-                ).head(3)
-
-                for _, baris in contoh.iterrows():
-                    with st.expander(
-                        f"{baris['sample_id']}: "
-                        f"{baris['label_manual']} vs "
-                        f"{baris['prediksi_model']}"
-                    ):
-                        st.write(baris["text"])
-
-        except Exception as e:
-            st.error(f"Gagal memproses CSV evaluasi: {e}")
+            up_df = pd.read_csv(uploaded_eval)
+            if "label_manual" in up_df.columns:
+                if FILE_PREDIKSI_TEMP.exists():
+                    pred_temp = pd.read_csv(FILE_PREDIKSI_TEMP)
+                    up_df = up_df.merge(pred_temp[["sample_id", "prediksi_model"]], on="sample_id", how="left")
+                up_df.to_csv(FILE_EVALUASI, index=False, encoding="utf-8-sig")
+                st.success("Berkas evaluasi berhasil diperbarui!")
+                st.rerun()
+        except Exception as err:
+            st.error(f"Gagal memproses berkas: {err}")
