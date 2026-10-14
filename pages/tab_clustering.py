@@ -9,6 +9,31 @@ from collections import Counter
 from wordcloud import WordCloud
 
 
+KATA_POSITIF = set("""
+menang bagus hebat keren luar biasa bangga dukung dukungan semangat apresiasi
+prestasi juara sukses maju terbaik gemilang top mantap hebat kagum salut
+luar biasa cinta sayang harapan optimis yakin kuat tangguh hebat memukau
+""".split())
+
+KATA_NEGATIF = set("""
+kalah jelek buruk kecewa sedih gagal kritik parah hancur bobrok mafia
+korupsi rusak payah pecundang memalukan benci marah kesal kecewa
+bodoh tolol goblok sampah ancur rusak hina hinaan kacau buruk
+""".split())
+
+
+def sentimen_sederhana(teks):
+    kata = str(teks).lower().split()
+    pos = sum(1 for w in kata if w in KATA_POSITIF)
+    neg = sum(1 for w in kata if w in KATA_NEGATIF)
+    if pos > neg:
+        return 'positive'
+    elif neg > pos:
+        return 'negative'
+    else:
+        return 'neutral'
+
+
 def tampilkan_tab_clustering(data):
     st.header("Clustering TF-IDF + K-Means")
 
@@ -107,6 +132,43 @@ def tampilkan_tab_clustering(data):
         plt.tight_layout()
         st.pyplot(fig)
 
+    with st.expander("Distribusi Sentimen per Cluster", expanded=False):
+        sent_col = None
+        for c in ['sentimen', 'sentiment', 'label_sentimen', 'sentimen_pred']:
+            if c in df.columns:
+                sent_col = c
+                break
+
+        if sent_col:
+            df_sent = df.copy()
+        else:
+            df_sent = df.copy()
+            df_sent['sentimen'] = df_sent[text_col].apply(sentimen_sederhana)
+            sent_col = 'sentimen'
+
+        pivot = df_sent.groupby(['cluster', sent_col]).size().unstack(fill_value=0)
+
+        warna_map = {
+            'negative': '#e74c3c',
+            'neutral':  '#95a5a6',
+            'positive': '#2ecc71',
+        }
+        warna_urut = [warna_map.get(col, '#cccccc') for col in pivot.columns]
+
+        fig, ax = plt.subplots(figsize=(6, 3.5))
+        pivot.plot(kind='bar', stacked=True, ax=ax, color=warna_urut)
+        ax.set_title('Distribusi Sentimen per Cluster', fontsize=10)
+        ax.set_xlabel('Cluster', fontsize=9)
+        ax.set_ylabel('Jumlah Postingan', fontsize=9)
+        ax.tick_params(labelsize=8)
+        plt.xticks(rotation=0)
+        plt.legend(title='Sentimen', fontsize=8)
+        plt.tight_layout()
+        st.pyplot(fig)
+
+        st.caption("Sentimen dihitung dengan pendekatan lexicon sederhana "
+                   "(kamus kata positif dan negatif manual).")
+
     with st.expander("Word Cloud per Cluster", expanded=False):
         fig, axes = plt.subplots(1, k, figsize=(12, 3.5))
         for i in range(k):
@@ -160,5 +222,5 @@ Cluster 0 dan 1 tumpang tindih pada kata "timnas" dan "pemain", perbedaannya ter
 
 Cluster 1 dan 2 tumpang tindih pada kata "timnas" dan "garuda", cluster 2 lebih spesifik ke tagar kampanye, sedangkan cluster 1 lebih luas.
 
-Kata "garuda" yang ambigu (bisa berarti julukan Timnas, brand, atau nama tempat) menyebabkan tumpang tindih antar cluster.
+Kata "garuda" yang ambigu ( bisa berarti julukan Timnas, brand, atau nama tempat) menyebabkan tumpang tindih antar cluster.
 """)
