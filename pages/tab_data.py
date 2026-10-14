@@ -8,7 +8,7 @@ KOLOM_WAJIB = ["text", "created_at", "like_count"]
 METADATA_PATH = "data/processed/metadata_pengambilan.json"
 LOG_PATH = "data/processed/cleaning_log.csv"
 
-
+@st.cache_data
 def muat_dataset(file_unggah=None, path_default="data/processed/dataset_timnas.csv"):
     """Membaca CSV dari unggahan atau berkas default. Mengembalikan None bila tidak ada."""
     try:
@@ -60,7 +60,7 @@ def baca_metadata():
             return json.load(f)
     return None
 
-
+@st.cache_data
 def tampilkan_tab_data(df):
     st.header("Data")
 
@@ -85,12 +85,18 @@ def tampilkan_tab_data(df):
         st.info("Berkas metadata_pengambilan.json tidak ditemukan. "
                 "Jalankan notebook pengambilan data terlebih dahulu.")
     else:
-        st.markdown(f"""
-- **Kata kunci:** {', '.join(meta['kata_kunci'])}
-- **Periode:** {meta['periode_mulai']} sampai {meta['periode_selesai']}
-- **Metode:** {meta['metode']}
-- **Waktu pengambilan:** {meta['waktu_pengambilan']}
-""")
+        baris_meta = []
+        if meta.get("kata_kunci"):
+            baris_meta.append(f"- **Kata kunci:** {', '.join(meta['kata_kunci'])}")
+        if meta.get("metode"):
+            baris_meta.append(f"- **Metode:** {meta['metode']}")
+        if meta.get("waktu_pengambilan"):
+            baris_meta.append(f"- **Waktu pengambilan:** {meta['waktu_pengambilan']}")
+        if meta.get("jumlah_data_mentah") is not None:
+            baris_meta.append(f"- **Jumlah data mentah:** {meta['jumlah_data_mentah']}")
+        if meta.get("jumlah_data_akhir") is not None:
+            baris_meta.append(f"- **Jumlah data akhir:** {meta['jumlah_data_akhir']}")
+        st.markdown("\n".join(baris_meta))
         if meta.get("kendala"):
             st.markdown("**Kendala yang dicatat:**")
             for k in meta["kendala"]:

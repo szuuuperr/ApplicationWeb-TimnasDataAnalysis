@@ -1,6 +1,6 @@
 import streamlit as st
 
 
-def tampilkan_tab_regresi(df):
-    st.header("Regresi")
-    st.info("Tab Regresi dikerjakan oleh M. Arrizal Rahman A.L.")
+def tampilkan_tab_clustering(df):
+    st.header("Clustering")
+    st.info("Tab Clustering dikerjakan oleh anggota kelompok.")
