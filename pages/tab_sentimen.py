@@ -15,16 +15,20 @@ URUTAN_SENTIMEN = ["positive", "neutral", "negative"]
 NAMA_LABEL = {"positive": "Positif", "neutral": "Netral", "negative": "Negatif"}
 
 # Kata Kunci Sentimen untuk Fallback Lexicon
+# Catatan: kata topik seperti "garuda"/"timnas" sengaja TIDAK dimasukkan
+# karena bukan penanda sentimen dan dapat membuat hasil bias positif.
 KATA_POSITIF = {
-    "menang", "juara", "mantap", "bagus", "keren", "hebat", "bangga", "terbaik", 
-    "garuda", "dukung", "semangat", "gacor", "top", "apresiasi", "lolos", "unggul",
-    "terimakasih", "berhasil", "jos", "menyala", "kelas", "cinta", "love", "pinter"
+    "menang", "juara", "mantap", "bagus", "keren", "hebat", "bangga", "terbaik",
+    "dukung", "dukungan", "semangat", "gacor", "top", "apresiasi", "lolos", "unggul",
+    "terimakasih", "berhasil", "jos", "menyala", "cinta", "love", "pinter",
+    "prestasi", "gemilang", "salut", "kagum", "memukau", "tangguh", "optimis"
 }
 
 KATA_NEGATIF = {
-    "kalah", "jelek", "buruk", "kecewa", "parah", "lemah", "bobrok", "out", 
-    "gagal", "rugi", "ancur", "hancur", "error", "salah", "benci", "ampas", 
-    "beban", "boikot", "injak", "kehilangan", "rusak"
+    "kalah", "jelek", "buruk", "kecewa", "parah", "lemah", "bobrok", "out",
+    "gagal", "rugi", "ancur", "hancur", "error", "salah", "benci", "ampas",
+    "beban", "boikot", "injak", "kehilangan", "rusak", "payah", "memalukan",
+    "korupsi", "mafia", "kacau", "sampah"
 }
 
 KATA_NEGASI = {"tidak", "bukan", "gak", "nggak", "ngga", "tak", "belum", "tdk"}
@@ -86,13 +90,21 @@ def proses_klasifikasi(teks_list):
                     raw_label = str(item.get("label", "")).strip().lower()
                     score = float(item.get("score", 0.6))
 
-                    # Normalisasi label
-                    if "pos" in raw_label or raw_label == "label_2":
+                    # Normalisasi label. Model w11wo memakai id2label
+                    # {0: positive, 1: neutral, 2: negative}, sehingga
+                    # pipeline umumnya mengembalikan nama label langsung.
+                    if "pos" in raw_label:
                         label = "positive"
-                    elif "neg" in raw_label or raw_label == "label_0":
+                    elif "neg" in raw_label:
                         label = "negative"
-                    else:
+                    elif "neu" in raw_label:
                         label = "neutral"
+                    else:
+                        label = {
+                            "label_0": "positive",
+                            "label_1": "neutral",
+                            "label_2": "negative",
+                        }.get(raw_label, "neutral")
 
                     hasil.append({"sentimen": label, "confidence": score})
             return pd.DataFrame(hasil)
@@ -162,7 +174,7 @@ def tampilkan_tab_sentimen(df):
     tampil_df["confidence_pct"] = (tampil_df["confidence"] * 100).round(2)
 
     st.dataframe(
-        tampil_df[["text", "sentimen_label", "confidence_pct"]],
+        tampil_df[[kolom_teks, "sentimen_label", "confidence_pct"]],
         use_container_width=True,
         hide_index=True
     )
@@ -172,34 +184,38 @@ def tampilkan_tab_sentimen(df):
     st.subheader("Pemeriksaan Manual 20 Sampel (Evaluasi Model)")
 
     # Jika file evaluasi_sentimen.csv sudah ada di folder processed
-    # Jika file evaluasi_sentimen.csv sudah ada di folder processed
     if FILE_EVALUASI.exists():
         eval_df = pd.read_csv(FILE_EVALUASI)
         if {"text", "label_manual", "prediksi_model"}.issubset(eval_df.columns):
-            # Pastikan kolom diubah ke tipe string terlebih dahulu
-            label_manual_str = eval_df["label_manual"].fillna("").astype(str).str.lower().str.strip()
-            prediksi_model_str = eval_df["prediksi_model"].fillna("").astype(str).str.lower().str.strip()
-            
-            eval_df["sesuai"] = label_manual_str == prediksi_model_str
-            total_eval = len(eval_df)
-            jumlah_sesuai = int(eval_df["sesuai"].sum())
-            persen_sesuai = (jumlah_sesuai / total_eval * 100) if total_eval > 0 else 0
+            # Hanya baris yang sudah diisi label manual yang dievaluasi
+            eval_df["label_manual"] = eval_df["label_manual"].fillna("").astype(str).str.lower().str.strip()
+            eval_df["prediksi_model"] = eval_df["prediksi_model"].fillna("").astype(str).str.lower().str.strip()
+            eval_df = eval_df[eval_df["label_manual"] != ""].reset_index(drop=True)
 
-            m1, m2, m3 = st.columns(3)
-            m1.metric("Total Sampel Evaluasi", total_eval)
-            m2.metric("Jumlah Label Sesuai", jumlah_sesuai)
-            m3.metric("Persentase Kesesuaian", f"{persen_sesuai:.2f}%")
+            if eval_df.empty:
+                st.info("Sampel evaluasi belum diisi label manual. "
+                        "Isi kolom `label_manual` lalu unggah kembali berkasnya.")
+            else:
+                eval_df["sesuai"] = eval_df["label_manual"] == eval_df["prediksi_model"]
+                total_eval = len(eval_df)
+                jumlah_sesuai = int(eval_df["sesuai"].sum())
+                persen_sesuai = (jumlah_sesuai / total_eval * 100) if total_eval > 0 else 0
 
-            # Pembahasan 3 Contoh Ketidaksesuaian
-            mismatch_df = eval_df[~eval_df["sesuai"]].copy()
-            st.write(f"**Ditemukan {len(mismatch_df)} ketidaksesuaian label.**")
+                m1, m2, m3 = st.columns(3)
+                m1.metric("Total Sampel Evaluasi", total_eval)
+                m2.metric("Jumlah Label Sesuai", jumlah_sesuai)
+                m3.metric("Persentase Kesesuaian", f"{persen_sesuai:.2f}%")
 
-            if not mismatch_df.empty:
-                st.write("**Contoh Ketidaksesuaian untuk Laporan:**")
-                contoh_3 = mismatch_df.head(3)
-                for _, idx_row in contoh_3.iterrows():
-                    with st.expander(f"Sampel {idx_row.get('sample_id', '')} | Manual: {idx_row['label_manual']} VS Sistem: {idx_row['prediksi_model']}"):
-                        st.write(f"**Teks:** {idx_row['text']}")
+                # Pembahasan 3 Contoh Ketidaksesuaian
+                mismatch_df = eval_df[~eval_df["sesuai"]].copy()
+                st.write(f"**Ditemukan {len(mismatch_df)} ketidaksesuaian label.**")
+
+                if not mismatch_df.empty:
+                    st.write("**Contoh Ketidaksesuaian untuk Laporan:**")
+                    contoh_3 = mismatch_df.head(3)
+                    for _, idx_row in contoh_3.iterrows():
+                        with st.expander(f"Sampel {idx_row.get('sample_id', '')} | Manual: {idx_row['label_manual']} VS Sistem: {idx_row['prediksi_model']}"):
+                            st.write(f"**Teks:** {idx_row['text']}")
 
     # Pembuatan Sampel Baru
     st.write("---")
@@ -210,12 +226,12 @@ def tampilkan_tab_sentimen(df):
         sampel["sample_id"] = [f"S{i+1:02d}" for i in range(len(sampel))]
 
         # Simpan file prediksi internal
-        sampel[["sample_id", "text", "sentimen"]].rename(columns={"sentimen": "prediksi_model"}).to_csv(
-            FILE_PREDIKSI_TEMP, index=False, encoding="utf-8-sig"
-        )
+        sampel[["sample_id", kolom_teks, "sentimen"]].rename(
+            columns={kolom_teks: "text", "sentimen": "prediksi_model"}
+        ).to_csv(FILE_PREDIKSI_TEMP, index=False, encoding="utf-8-sig")
 
         # File sampel kosong untuk diisi manual
-        sampel_manual = sampel[["sample_id", "text"]].copy()
+        sampel_manual = sampel[["sample_id", kolom_teks]].rename(columns={kolom_teks: "text"}).copy()
         sampel_manual["label_manual"] = ""
         sampel_manual.to_csv(FILE_EVALUASI, index=False, encoding="utf-8-sig")
         st.success("20 sampel berhasil diacak dan disimpan!")

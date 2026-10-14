@@ -34,6 +34,23 @@ def sentimen_sederhana(teks):
         return 'neutral'
 
 
+def beri_nama_cluster(top_words):
+    """Menebak tema cluster secara dinamis dari kata dominan TF-IDF.
+
+    Dibuat dinamis agar nama tema tetap relevan walau dataset diperbarui.
+    """
+    kata = set(top_words)
+    if kata & {"fifa", "asean", "cup", "trofi", "gelar", "juara"}:
+        return "FIFA ASEAN Cup 2026 & Prestasi Timnas"
+    if kata & {"timnasday", "pertiwiberani", "timnasindonesia", "bersamagaruda"}:
+        return "#TimnasDay dan #PertiwiBerani"
+    if kata & {"kritik", "naturalisasi", "mafia", "federasi", "boycott"}:
+        return "Kritik terhadap PSSI & Federasi"
+    if kata & {"pssi", "pemain", "pelatih"}:
+        return "Dinamika PSSI, Pemain & Pelatih"
+    return "Diskusi Umum Seputar Timnas Indonesia"
+
+
 def tampilkan_tab_clustering(data):
     st.header("Clustering TF-IDF + K-Means")
 
@@ -89,15 +106,14 @@ def tampilkan_tab_clustering(data):
     kmeans = KMeans(n_clusters=k, random_state=42, n_init=10)
     df['cluster'] = kmeans.fit_predict(X)
 
-    nama_tema = {
-        0: "Kritik terhadap PSSI dan Kebijakan Pemain",
-        1: "Diskusi Umum Seputar Timnas Indonesia",
-        2: "#TimnasDay dan #PertiwiBerani",
-    }
-
     order_centroids = kmeans.cluster_centers_.argsort()[:, ::-1]
     terms = vectorizer.get_feature_names_out()
     top_words = {i: [terms[j] for j in order_centroids[i, :5]] for i in range(k)}
+
+    nama_tema = {
+        c: beri_nama_cluster([terms[j].split()[0] for j in order_centroids[c, :10]])
+        for c in range(k)
+    }
 
     st.caption(f"Data valid: **{len(df)}** baris | Jumlah cluster: **{k}**")
 
@@ -204,23 +220,17 @@ def tampilkan_tab_clustering(data):
 
     with col_kiri:
         with st.expander("Perbedaan antar Cluster", expanded=False):
-            st.markdown("""
-**Cluster 0 - Kritik terhadap PSSI dan Kebijakan Pemain**  
-Berisi postingan bernada kritik terhadap PSSI, perdebatan naturalisasi, dan kualitas pemain lokal. Kata dominan: `pssi`, `pemain`, `tapi`, `kalau`.
-
-**Cluster 1 - Diskusi Umum Seputar Timnas Indonesia**  
-Pembahasan umum tentang Timnas Indonesia di kompetisi FIFA, dengan beberapa noise seperti "sekolah garuda" dan "patung garuda". Kata dominan: `timnas`, `indonesia`, `fifa`, `cup`.
-
-**Cluster 2 - #TimnasDay dan #PertiwiBerani**  
-Postingan dengan tagar kampanye #TimnasDay dan #PertiwiBerani, termasuk dukungan Timnas Putri dan mention tokoh politik Gibran. Kata dominan: `timnasday`, `gibran`, `pertiwiberani`.
-""")
+            for c in range(k):
+                kata_kunci = "`, `".join(top_words[c])
+                st.markdown(f"**Cluster {c} - {nama_tema[c]}**  \n"
+                            f"Kata dominan: `{kata_kunci}`.")
 
     with col_kanan:
         with st.expander("Kemungkinan Tumpang Tindih", expanded=False):
-            st.markdown("""
-Cluster 0 dan 1 tumpang tindih pada kata "timnas" dan "pemain", perbedaannya terletak pada nada (cluster 0 lebih kritik, cluster 1 lebih informatif).
-
-Cluster 1 dan 2 tumpang tindih pada kata "timnas" dan "garuda", cluster 2 lebih spesifik ke tagar kampanye, sedangkan cluster 1 lebih luas.
-
-Kata "garuda" yang ambigu ( bisa berarti julukan Timnas, brand, atau nama tempat) menyebabkan tumpang tindih antar cluster.
-""")
+            st.markdown(
+                "Cluster saling bertumpang tindih karena berbagi kata umum seperti "
+                "`timnas`, `indonesia`, dan `garuda`. Kata **garuda** sangat ambigu "
+                "(julukan Timnas, nama brand, hingga nama tempat) sehingga dapat muncul "
+                "di beberapa cluster sekaligus. Perbedaan utama antar cluster terletak "
+                "pada kata dominan unik yang ditampilkan di panel **Perbedaan antar Cluster**."
+            )

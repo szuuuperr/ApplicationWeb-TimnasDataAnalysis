@@ -2,7 +2,8 @@ tahap,jumlah_baris
 Data mentah,798
 Hapus teks kosong,798
 Hapus duplikat teks asli,716
-Buang postingan tidak relevan,656
-Hapus teks bersih kosong,655
-Hapus duplikat teks bersih,635
-Dataset akhir,635
+Buang postingan tidak relevan,587
+Buang postingan bahasa asing,563
+Hapus teks bersih kosong,563
+Hapus duplikat teks bersih,545
+Dataset akhir,545

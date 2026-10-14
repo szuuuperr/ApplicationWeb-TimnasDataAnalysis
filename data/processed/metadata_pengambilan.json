@@ -10,6 +10,6 @@
   "metode": "Crawling dengan tweet-harvest melalui notebook",
   "waktu_pengambilan": "2026-10-11 15:56:32",
   "jumlah_data_mentah": 798,
-  "jumlah_data_akhir": 635,
+  "jumlah_data_akhir": 545,
   "kendala": []
 }

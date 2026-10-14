@@ -4,8 +4,23 @@ from pages.tab_data import (muat_dataset, validasi_dataset, siapkan_dataset, tam
 from pages.tab_sentimen import tampilkan_tab_sentimen
 from pages.tab_clustering import tampilkan_tab_clustering
 from pages.tab_regresi import tampilkan_tab_regresi
+from pages.tab_about import tampilkan_tab_about
 
 st.set_page_config(page_title="Analisis Postingan X tentang Timnas", layout="wide")
+
+st.markdown(
+    """
+    <style>
+        [data-testid="stSidebar"],
+        [data-testid="stSidebarCollapsedControl"],
+        [data-testid="collapsedControl"] {
+            display: none;
+        }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+
 st.title("Analisis Postingan X tentang Timnas Indonesia")
 
 file_unggah = st.file_uploader("Unggah dataset CSV", type="csv")
@@ -18,8 +33,8 @@ if df is None:
 validasi_dataset(df)
 df = siapkan_dataset(df)
 
-tab_data, tab_sentimen, tab_cluster, tab_regresi = st.tabs(
-    ["Data", "Sentimen", "Clustering", "Regresi"]
+tab_data, tab_sentimen, tab_cluster, tab_regresi, tab_about = st.tabs(
+    ["Data", "Sentimen", "Clustering", "Regresi", "About"]
 )
 
 with tab_data:
@@ -33,3 +48,6 @@ with tab_cluster:
 
 with tab_regresi:
     tampilkan_tab_regresi(df)
+
+with tab_about:
+    tampilkan_tab_about(df)
