@@ -6,17 +6,19 @@ from sklearn.model_selection import train_test_split
 from sklearn.linear_model import LinearRegression
 from sklearn.metrics import mean_absolute_error, r2_score
 
-
 def tampilkan_tab_regresi(data):
     st.header("Regresi Linear - Prediksi Repost dari Like")
 
+    # kolom fitur (X = like_count) dan target (y = repost_count)
     fitur_col = 'like_count' if 'like_count' in data.columns else None
     target_col = 'repost_count' if 'repost_count' in data.columns else None
 
+    # vlidasi keberadaan kolom pada dataset
     if fitur_col is None or target_col is None:
         st.error("Kolom `like_count` dan `repost_count` dibutuhkan untuk regresi.")
         return
 
+    # hpus baris kosong dan ubah format nilai menjadi numerik
     df = data.dropna(subset=[fitur_col, target_col]).copy()
     df = df[(df[fitur_col].astype(str).str.strip() != '')
             & (df[target_col].astype(str).str.strip() != '')]
@@ -24,28 +26,36 @@ def tampilkan_tab_regresi(data):
     df[target_col] = pd.to_numeric(df[target_col], errors='coerce')
     df = df.dropna(subset=[fitur_col, target_col]).reset_index(drop=True)
 
+    # jumlah data valid dibandingkan data awal yang masuk
     jumlah_awal = len(data)
     jumlah_valid = len(df)
     jumlah_dibuang = jumlah_awal - jumlah_valid
+
     st.caption(f"Data awal: **{jumlah_awal}** baris | "
                f"Valid: **{jumlah_valid}** baris | "
                f"Dibuang (like/repost tidak valid): **{jumlah_dibuang}** baris")
 
+    #mebatasi minimum jumlah baris data agar regresi dapat dijalankan
     if len(df) < 10:
         st.warning("Data terlalu sedikit untuk regresi (minimal 10 baris).")
         return
 
+    # menghitung koefisien korelasi Pearson awal antara fitur dan target
     korelasi = df[fitur_col].corr(df[target_col])
 
+    #  dataset data latih dan data uji 80:20
     X = df[[fitur_col]]
     y = df[target_col]
     X_train, X_test, y_train, y_test = train_test_split(
         X, y, test_size=0.2, random_state=42
     )
+    
+    # mengnisialisasi, pelatihan, dan pengujian model regresi linear
     model = LinearRegression()
     model.fit(X_train, y_train)
     y_pred = model.predict(X_test)
 
+    #menghitung metrik evaluasi error dan performa model (MAE dan R-squared)
     mae = mean_absolute_error(y_test, y_pred)
     r2 = r2_score(y_test, y_pred)
 
@@ -53,18 +63,21 @@ def tampilkan_tab_regresi(data):
                f"Latih: **{len(X_train)}** | Uji: **{len(X_test)}** | "
                f"Korelasi like vs repost: **{korelasi:.4f}**")
 
+    # menampilkan kartu metrik evaluasi utama pada antarmuka Streamlit
     st.subheader("Evaluasi Model")
     col1, col2, col3 = st.columns(3)
     col1.metric("Korelasi (Pearson)", f"{korelasi:.4f}")
     col2.metric("MAE (Mean Absolute Error)", f"{mae:.2f}")
     col3.metric("R² (Koefisien Determinasi)", f"{r2:.4f}")
 
+    #menampilkan detail nilai intercept dan koefisien kemiringan garis regresi
     with st.expander("Detail koefisien model"):
         st.write(f"**Intercept**: {model.intercept_:.2f}")
         st.write(f"**Koefisien like_count**: {model.coef_[0]:.4f}")
 
     st.divider()
 
+    # bagian interaktif untuk melakukan simulasi prediksi jumlah repost berdasarkan input like
     st.subheader("Estimasi Repost")
 
     col1, col2 = st.columns([1, 1], vertical_alignment="bottom")
@@ -82,6 +95,7 @@ def tampilkan_tab_regresi(data):
 
     st.divider()
 
+    # visualisasi grafik perbandingan nilai aktual data uji terhadap hasil prediksi model
     with st.expander("Repost Aktual vs Prediksi", expanded=False):
         st.caption("Klik icon fullscreen di kanan atas grafik untuk memperbesar")
         fig, ax = plt.subplots(figsize=(5, 3.5))
@@ -97,7 +111,8 @@ def tampilkan_tab_regresi(data):
 
     with st.expander("Exploratory Data Analysis", expanded=False):
 
-        st.markdown("**1. Distribusi Data**")
+        # menampilkan histogram distribusi variabel like dan repost
+        st.markdown("**Distribusi Data**")
         fig, axes = plt.subplots(1, 2, figsize=(8, 2.8))
         sns.histplot(df[fitur_col], bins=20, kde=True, ax=axes[0], color='steelblue')
         axes[0].set_title('Like', fontsize=9)
@@ -108,7 +123,8 @@ def tampilkan_tab_regresi(data):
         plt.tight_layout()
         st.pyplot(fig)
 
-        st.markdown("**2. Matriks Korelasi**")
+        # Menampilkan matriks heatmap korelasi antar variabel
+        st.markdown("**Matriks Korelasi**")
         corr = df[[fitur_col, target_col]].corr()
         col_corr1, col_corr2 = st.columns([1, 2])
         with col_corr1:
@@ -123,7 +139,8 @@ def tampilkan_tab_regresi(data):
             st.write("Nilai korelasi:")
             st.dataframe(corr.style.format("{:.3f}"), width='stretch')
 
-        st.markdown("**3. Grafik Regresi (Like vs Repost)**")
+        # menampilkan scatter plot lengkap dengan garis tren regresi linear
+        st.markdown("**Grafik Regresi (Like vs Repost)**")
         fig, ax = plt.subplots(figsize=(6, 3.5))
         sns.regplot(data=df, x=fitur_col, y=target_col, ax=ax,
                     scatter_kws={'alpha': 0.4, 's': 10},
@@ -137,6 +154,7 @@ def tampilkan_tab_regresi(data):
 
     st.divider()
 
+    #menyediakan rangkuman interpretasi akhir untuk memudahkan penjelasan ke dosen
     st.subheader("Interpretasi")
 
     if r2 < 0:

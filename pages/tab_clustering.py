@@ -8,11 +8,10 @@ import matplotlib.pyplot as plt
 from collections import Counter
 from wordcloud import WordCloud
 
-
 KATA_POSITIF = set("""
 menang bagus hebat keren luar biasa bangga dukung dukungan semangat apresiasi
-prestasi juara sukses maju terbaik gemilang top mantap hebat kagum salut
-luar biasa cinta sayang harapan optimis yakin kuat tangguh hebat memukau
+prestasi juara sukses maju terbaik gemilang top mantap hebat kagum salut 
+luar biasa cinta sayang harapan optimis yakin kuat tangguh hebat memukau              
 """.split())
 
 KATA_NEGATIF = set("""
@@ -20,7 +19,6 @@ kalah jelek buruk kecewa sedih gagal kritik parah hancur bobrok mafia
 korupsi rusak payah pecundang memalukan benci marah kesal kecewa
 bodoh tolol goblok sampah ancur rusak hina hinaan kacau buruk
 """.split())
-
 
 def sentimen_sederhana(teks):
     kata = str(teks).lower().split()
@@ -33,12 +31,7 @@ def sentimen_sederhana(teks):
     else:
         return 'neutral'
 
-
 def beri_nama_cluster(top_words):
-    """Menebak tema cluster secara dinamis dari kata dominan TF-IDF.
-
-    Dibuat dinamis agar nama tema tetap relevan walau dataset diperbarui.
-    """
     kata = set(top_words)
     if kata & {"fifa", "asean", "cup", "trofi", "gelar", "juara"}:
         return "FIFA ASEAN Cup 2026 & Prestasi Timnas"
@@ -50,16 +43,18 @@ def beri_nama_cluster(top_words):
         return "Dinamika PSSI, Pemain & Pelatih"
     return "Diskusi Umum Seputar Timnas Indonesia"
 
-
 def tampilkan_tab_clustering(data):
     st.header("Clustering TF-IDF + K-Means")
 
+    #memilih kolom teks yang tersedia pada DataFrame
     text_col = 'text_clean' if 'text_clean' in data.columns else 'text'
 
+    #bersihkan data dari nilai kosong (NaN) dan baris kosong
     df = data.dropna(subset=[text_col]).copy()
     df = df[df[text_col].astype(str).str.strip() != '']
     df = df.reset_index(drop=True)
 
+    #daftar stopword bahasa Indonesia untuk menyaring kata umum yang tidak penting
     stopword_id = set("""
     garuda yang dan di ke dari untuk pada dengan adalah ini itu akan atau juga karena
     sebagai oleh dalam telah sudah saya kamu dia kami kita mereka anda nya ku mu
@@ -72,6 +67,7 @@ def tampilkan_tab_clustering(data):
     these those it its as at by from have has had do does did but if then so
     """.split())
 
+    # Kamus bahasa gaul
     slang_dict = {
         'yg':'yang','dgn':'dengan','utk':'untuk','tdk':'tidak','gak':'tidak',
         'ga':'tidak','gk':'tidak','bgt':'banget','aja':'saja','kalo':'kalau',
@@ -80,12 +76,15 @@ def tampilkan_tab_clustering(data):
     }
 
     def normalize_slang(t):
+        # nengubah kata-kata singkatan sesuai kamus slang_dict
         return ' '.join([slang_dict.get(w, w) for w in t.split()])
 
     def remove_stopwords(t):
+        #stopword dan kata yang panjangnya kurang dari 3 karakter
         return ' '.join([w for w in t.split()
                          if w not in stopword_id and w not in stopword_en and len(w) > 2])
 
+    #pipeline preprocessing teks ke kolom baru 'text_final'
     df['text_final'] = (df[text_col].astype(str)
                         .str.lower()
                         .apply(normalize_slang)
@@ -96,20 +95,24 @@ def tampilkan_tab_clustering(data):
         st.warning("Tidak ada data teks yang bisa diproses setelah preprocessing.")
         return
 
+    # fitur teks menggunakan TF-IDF Vectorizer
     vectorizer = TfidfVectorizer(
         stop_words=list(stopword_id | stopword_en),
         max_features=1000, ngram_range=(1, 2), min_df=2
     )
     X = vectorizer.fit_transform(df['text_final'])
 
+    # algoritma K-Means Clustering dengan k = 3 cluster
     k = 3
     kmeans = KMeans(n_clusters=k, random_state=42, n_init=10)
     df['cluster'] = kmeans.fit_predict(X)
 
+    #mencari kata-kata teratas (dominan) di setiap centroid cluster
     order_centroids = kmeans.cluster_centers_.argsort()[:, ::-1]
     terms = vectorizer.get_feature_names_out()
     top_words = {i: [terms[j] for j in order_centroids[i, :5]] for i in range(k)}
 
+    # label nama tema otomatis untuk setiap cluster
     nama_tema = {
         c: beri_nama_cluster([terms[j].split()[0] for j in order_centroids[c, :10]])
         for c in range(k)
@@ -122,6 +125,7 @@ def tampilkan_tab_clustering(data):
         subset = df[df['cluster'] == c]
         contoh = subset[text_col].head(3).tolist()
 
+        #expander untuk menampilkan detail tiap cluster
         with st.expander(f"Cluster {c} - {nama_tema[c]} ({len(subset)} postingan)"):
             st.write(f"**Kata dominan (TF-IDF)**: {', '.join(top_words[c])}")
             st.write("**3 contoh postingan:**")
@@ -130,6 +134,7 @@ def tampilkan_tab_clustering(data):
 
     st.divider()
 
+    #visualisasi cluster menggunakan PCA 2D scatter plot
     with st.expander("Visualisasi K-Means Clustering (PCA 2D)", expanded=False):
         pca = PCA(n_components=2, random_state=0)
         reduced = pca.fit_transform(X.toarray())
@@ -206,7 +211,7 @@ def tampilkan_tab_clustering(data):
             if common:
                 words, counts = zip(*common)
                 axes[i].barh(list(words)[::-1], list(counts)[::-1], color='steelblue')
-                axes[i].set_title(f'Cluster {i} - Top 10 Kata', fontsize=9)
+                axes[i].set_title(f'Cluster {i} Top 10 Kata', fontsize=9)
                 axes[i].set_xlabel('Frekuensi', fontsize=8)
                 axes[i].tick_params(labelsize=7)
         plt.tight_layout()
